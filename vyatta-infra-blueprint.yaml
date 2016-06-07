@@ -305,6 +305,10 @@ node_templates:
             port_range_max: 65535
             remote_ip_prefix: 0.0.0.0/0
             protocol: udp
+          - port_range_min: 1
+            port_range_max: 255
+            remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
       aws_properties:
         aws_config: { get_property: [ provider_configuration, aws_config ] }
         description: Security group
@@ -316,6 +320,10 @@ node_templates:
           - ip_protocol: udp
             from_port: 1
             to_port: 65535
+            cidr_ip: 0.0.0.0/0
+          - ip_protocol: icmp
+            from_port: 1
+            to_port: 255
             cidr_ip: 0.0.0.0/0
 
   bind9_host:
