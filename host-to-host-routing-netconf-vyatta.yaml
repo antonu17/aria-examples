@@ -1,0 +1,443 @@
+tosca_definitions_version: cloudify_dsl_1_2
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/3.3/types.yaml
+  - http://www.getcloudify.org/spec/aws-plugin/1.3/plugin.yaml
+  - http://www.getcloudify.org/spec/openstack-plugin/1.3/plugin.yaml
+  - https://raw.githubusercontent.com/cloudify-cosmo/cloudify-netconf-plugin/master/plugin.yaml
+  - https://raw.githubusercontent.com/cloudify-cosmo/cloudify-netconf-plugin/master/blueprint_examples/vyatta-yttc-generated.yaml
+  - types/multicloud/openstack.yaml
+  # - types/multicloud/aws.yaml
+
+inputs:
+
+  # OpenStack
+
+  keystone_username:
+    type: string
+
+  keystone_password:
+    type: string
+
+  region:
+    type: string
+
+  keystone_tenant_name:
+    type: string
+
+  keystone_url:
+    type: string
+
+  region:
+    type: string
+
+  nova_url:
+    type: string
+
+  neutron_url:
+    type: string
+
+  openstack_image_id:
+    type: string
+
+  openstack_flavor_id:
+    type: string
+
+  # Networking
+
+  existing_inbound_network_name:
+    type: string
+
+  existing_outbound_network_name:
+    type: string
+
+  inbound_port_name:
+    type: string
+
+  outbound_port_name:
+    type: string
+
+  existing_inbound_subnet_name:
+    type: string
+
+  existing_inbound_subnet_cidr:
+    type: string
+
+  existing_outbound_subnet_name:
+    type: string
+
+  existing_outbound_subnet_cidr:
+    type: string
+
+  # Netconf inputs
+
+  netconf_server:
+   type: string
+   description: >
+       netconf server ip
+
+  netconf_user:
+    type: string
+    description: >
+       netconf server user
+
+  netconf_password:
+    type: string
+    description: >
+       netconf server user password
+
+  netconf_key_content:
+    type: string
+    description: >
+       netconf server user rsa key content, can be used instead password
+
+  netconf_nat_outbound_interface:
+    type: string
+    description: >
+        internal netconf server interface reachable from application network
+
+  unique_inbound_nat_rule_id:
+    type: integer
+    default: 666
+
+  unique_outbound_nat_rule_id:
+    type: integer
+    default: 999
+
+  # SSHing
+
+  agent_user:
+    type: string
+
+  keypair_name:
+    type: string
+
+  local_path:
+    type: string
+
+  # AWS EC2
+
+  aws_access_key_id:
+    type: string
+
+  aws_secret_access_key:
+    type: string
+
+  ec2_region_name:
+    type: string
+
+  aws_image_id:
+    type: string
+
+  aws_instance_type:
+    type: string
+
+node_types:
+
+  vyatta-machine:
+    derived_from: cloudify.netconf.nodes.xml_rpc
+    properties:
+      metadata:
+        default:
+          xmlns:
+            vyatta-interfaces-dataplane-v1: urn:vyatta.com:mgmt:vyatta-interfaces-dataplane:1
+            vyatta-if-v1: urn:vyatta.com:mgmt:vyatta-interfaces:1
+
+node_templates:
+
+  provider_configuration:
+    type: provider_configuration
+    properties:
+      openstack_config:
+        username: { get_input: keystone_username }
+        password: { get_input: keystone_password }
+        tenant_name: { get_input: keystone_tenant_name }
+        auth_url: { get_input: keystone_url }
+        region: { get_input: region }
+        nova_url: { get_input: nova_url }
+        neutron_url: { get_input: neutron_url }
+      aws_config:
+        aws_access_key_id: { get_input: aws_access_key_id }
+        aws_secret_access_key: { get_input: aws_secret_access_key }
+        ec2_region_name: { get_input: ec2_region_name }
+
+  keypair:
+    type: aria.multicloud.keypair
+    properties:
+      resource_id: { get_input: keypair_name }
+      private_key_path: { get_input: local_path }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config ] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+
+  vm_security_groups:
+    type: aria.multicloud.security_group
+    properties:
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+        security_group:
+          description: Security group
+        rules:
+          - port_range_min: 1
+            port_range_max: 65535
+            remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
+          - port_range_min: 1
+            port_range_max: 65535
+            remote_ip_prefix: 0.0.0.0/0
+            protocol: udp
+          - port_range_min: 1
+            port_range_max: 255
+            remote_ip_prefix: 0.0.0.0/0
+            protocol: icmp
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+        description: Security group
+        rules:
+          - ip_protocol: tcp
+            from_port: 1
+            to_port: 65535
+            cidr_ip: 0.0.0.0/0
+          - ip_protocol: udp
+            from_port: 1
+            to_port: 65535
+            cidr_ip: 0.0.0.0/0
+          - ip_protocol: udp
+            from_port: 1
+            to_port: 255
+            cidr_ip: 0.0.0.0/0
+
+################################################################################################
+
+# Inbound/Outbound networks configuration
+
+################################################################################################
+
+
+  inbound_network:
+    type: aria.multicloud.network
+    properties:
+      use_external_resource: True
+      resource_id: { get_input: existing_inbound_network_name }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+
+  outbound_network:
+    type: aria.multicloud.network
+    properties:
+      use_external_resource: True
+      resource_id: { get_input: existing_outbound_network_name }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+
+################################################################################################
+
+# Subnets configuration
+
+################################################################################################
+
+  inbound_subnet:
+    type: aria.multicloud.subnet
+    properties:
+      use_external_resource: True
+      resource_id: { get_input: existing_inbound_subnet_name }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+        subnet:
+          ip_version: 4
+          cidr: { get_input: existing_inbound_subnet_cidr }
+          dns_nameservers: [8.8.4.4, 8.8.8.8]
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+    relationships:
+      - target: inbound_network
+        type: cloudify.relationships.contained_in
+
+  outbound_subnet:
+    type: aria.multicloud.subnet
+    properties:
+      use_external_resource: True
+      resource_id: { get_input: existing_outbound_subnet_name }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+        subnet:
+          ip_version: 4
+          cidr: { get_input: existing_outbound_subnet_cidr }
+          dns_nameservers: [8.8.4.4, 8.8.8.8]
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+    relationships:
+      - target: outbound_network
+        type: cloudify.relationships.contained_in
+
+################################################################################################
+
+# Port configuration
+
+################################################################################################
+
+  inbound_port:
+    type: aria.multicloud.port
+    properties:
+      resource_id: { get_input: inbound_port_name }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: inbound_network
+      - type: cloudify.relationships.depends_on
+        target: inbound_subnet
+      - type: aria.relationships.port_connected_to_security_group
+        target: vm_security_groups
+
+  outbound_port:
+    type: aria.multicloud.port
+    properties:
+      resource_id: { get_input: outbound_port_name }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: outbound_network
+      - type: cloudify.relationships.depends_on
+        target: outbound_subnet
+      - type: aria.relationships.port_connected_to_security_group
+        target: vm_security_groups
+
+################################################################################################
+
+# Host configuration
+
+################################################################################################
+
+  outbound_host:
+    type: aria.multicloud.Compute
+    properties:
+      resource_id: outbound-host
+      install_agent: false
+      cloudify_agent:
+        user: { get_input: agent_user }
+        key: { get_property: [ keypair, private_key_path ] }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+        server:
+          image: { get_input: openstack_image_id }
+          flavor: { get_input: openstack_flavor_id }
+        management_network_name: { get_property: [outbound_network, resource_id] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+        image_id: { get_input: aws_image_id }
+        instance_type: { get_input: aws_instance_type }
+    relationships:
+      - type: aria.relationships.instance_connected_to_keypair
+        target: keypair
+      - type: aria.relationships.instance_connected_to_port
+        target: outbound_port
+      - type: aria.relationships.instance_connected_to_security_group
+        target: vm_security_groups
+
+  inbound_host:
+    type: aria.multicloud.Compute
+    properties:
+      resource_id: inbound
+      install_agent: false
+      cloudify_agent:
+        user: { get_input: agent_user }
+        key: { get_property: [ keypair, private_key_path ] }
+      openstack_properties:
+        openstack_config: { get_property: [ provider_configuration, openstack_config] }
+        server:
+          image: { get_input: openstack_image_id }
+          flavor: { get_input: openstack_flavor_id }
+        management_network_name: { get_property: [inbound_network, resource_id] }
+      aws_properties:
+        aws_config: { get_property: [ provider_configuration, aws_config ] }
+        image_id: { get_input: aws_image_id }
+        instance_type: { get_input: aws_instance_type }
+    relationships:
+      - type: aria.relationships.instance_connected_to_keypair
+        target: keypair
+      - type: aria.relationships.instance_connected_to_port
+        target: inbound_port
+      - type: aria.relationships.instance_connected_to_security_group
+        target: vm_security_groups
+
+################################################################################################
+
+# Vyatta NAT configuration
+
+################################################################################################
+#
+#  vyatta-inbound_nat:
+#    type: vyatta-services-v1
+#    properties:
+#      netconf_auth:
+#        user: { get_input: netconf_user }
+#        password: { get_input: netconf_password }
+#        ip: { get_input:  netconf_server }
+#        key_content: { get_input: netconf_key_content }
+#    interfaces:
+#      cloudify.interfaces.lifecycle:
+#        create:
+#          inputs:
+#            lock:
+#              - rfc6020@candidate
+#            back_database: rfc6020@candidate
+#            front_database: rfc6020@running
+#            calls:
+#              - action: rfc6020@edit-config
+#                validate_xml: false
+#                payload:
+#                  rfc6020@config:
+#                      vyatta-services-v1@service:
+#                        vyatta-service-nat-v1@nat:
+#                          vyatta-service-nat-v1@source:
+#                            vyatta-service-nat-v1@rule:
+#                              vyatta-service-nat-v1@outbound-interface: { get_input: netconf_nat_outbound_interface }
+#                              vyatta-service-nat-v1@source:
+#                                vyatta-service-nat-v1@address: { get_input: existing_inbound_subnet_cidr }
+#                              vyatta-service-nat-v1@tagnode: { get_input: unique_inbound_nat_rule_id }
+#                              vyatta-service-nat-v1@translation:
+#                                vyatta-service-nat-v1@address: { get_attribute: [ inbound_host, ip ] }
+#
+#
+#  vyatta-outbound_nat:
+#    type: vyatta-services-v1
+#    properties:
+#      netconf_auth:
+#        user: { get_input: netconf_user }
+#        password: { get_input: netconf_password }
+#        ip: { get_input:  netconf_server }
+#        key_content: { get_input: netconf_key_content }
+#    interfaces:
+#      cloudify.interfaces.lifecycle:
+#        create:
+#          inputs:
+#            lock:
+#              - rfc6020@candidate
+#            back_database: rfc6020@candidate
+#            front_database: rfc6020@running
+#            calls:
+#              - action: rfc6020@edit-config
+#                validate_xml: false
+#                payload:
+#                  rfc6020@config:
+#                      vyatta-services-v1@service:
+#                        vyatta-service-nat-v1@nat:
+#                          vyatta-service-nat-v1@source:
+#                            vyatta-service-nat-v1@rule:
+#                              vyatta-service-nat-v1@outbound-interface: { get_input: netconf_nat_outbound_interface }
+#                              vyatta-service-nat-v1@source:
+#                                vyatta-service-nat-v1@address: { get_input: existing_outbound_subnet_cidr }
+#                              vyatta-service-nat-v1@tagnode: { get_input: unique_outbound_nat_rule_id }
+#                              vyatta-service-nat-v1@translation:
+#                                vyatta-service-nat-v1@address: { get_attribute: [ outbound_host, ip ] }
