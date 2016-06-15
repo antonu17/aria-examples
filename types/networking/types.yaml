@@ -1,10 +1,10 @@
 node_types:
 
   aria.networking.initialize_interfaces:
-    derived_from: cloudify.nodes.ApplicationServer
+    derived_from: cloudify.nodes.Root
     interfaces:
       cloudify.interfaces.relationship_lifecycle:
-         preconfigure:
+         start:
            implementation: fabric.fabric_plugin.tasks.run_script
            inputs:
              script_path:

@@ -382,25 +382,21 @@ node_templates:
     relationships:
       - type: aria.relationships.instance_connected_to_keypair
         target: keypair
-      - type: aria.relationships.instance_connected_to_port
-        target: management_port
-      - type: aria.relationships.instance_connected_to_floating_ip
-        target: vm_floating_ip
       - type: aria.relationships.instance_connected_to_security_group
         target: vm_security_groups
+      - type: aria.relationships.instance_connected_to_port
+        target: management_port
       - type: aria.relationships.instance_connected_to_port
         target: inbound_port
       - type: aria.relationships.instance_connected_to_port
         target: outbound_port
+      - type: aria.relationships.instance_connected_to_floating_ip
+        target: vm_floating_ip
 
-  activate_vyatta_interfaces:
-    type: aria.networking.initialize_interfaces
+  preconfigure_vyatta_inbound_outbound:
+    type: activate_vyatta_interfaces
     relationships:
-      - type: cloudify.relationships.depends_on
-        target: vyatta_host
       - type: cloudify.relationships.contained_in
-        target: vyatta_host
-      - type: cloudify.relationships.connected_to
         target: vyatta_host
 
 outputs:
