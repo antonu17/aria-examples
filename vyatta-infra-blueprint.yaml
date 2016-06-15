@@ -3,8 +3,10 @@ tosca_definitions_version: cloudify_dsl_1_2
 imports:
   - http://www.getcloudify.org/spec/cloudify/3.3/types.yaml
   - http://www.getcloudify.org/spec/aws-plugin/1.3/plugin.yaml
-  - http://www.getcloudify.org/spec/openstack-plugin/1.3/plugin.yaml
+  - http://www.getcloudify.org/spec/openstack-plugin/1.4/plugin.yaml
+  - http://www.getcloudify.org/spec/fabric-plugin/1.4/plugin.yaml
   - types/multicloud/openstack.yaml
+  - types/networking/types.yaml
   # - types/multicloud/aws.yaml
 
 inputs:
@@ -48,8 +50,20 @@ inputs:
   management_subnet_name:
     type: string
 
+  management_subnet_cidr:
+    type: string
+    default: 10.67.79.0/24
+
   inbound_network_name:
     type: string
+
+  inbound_subnet_cidr:
+    type: string
+    default: 10.67.80.0/24
+
+  outbound_subnet_cidr:
+    type: string
+    default: 10.67.81.0/24
 
   outbound_network_name:
     type: string
@@ -102,6 +116,23 @@ inputs:
 
   local_path:
     type: string
+
+node_types:
+
+  activate_vyatta_interfaces:
+    derived_from: aria.networking.initialize_interfaces
+    interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+         preconfigure:
+           implementation: fabric.fabric_plugin.tasks.run_script
+           inputs:
+             script_path:
+               default: scripts/networking/enable_network_interfaces.sh
+             fabric_env:
+               default:
+                 host_string: { get_attribute: [ vm_floating_ip, floating_ip_address ] }
+                 user: { get_input: agent_user }
+                 key_filename: { get_input: local_path }
 
 node_templates:
 
@@ -186,7 +217,7 @@ node_templates:
         openstack_config: { get_property: [ provider_configuration, openstack_config] }
         subnet:
           ip_version: 4
-          cidr: 10.67.79.0/24
+          cidr: { get_input: management_subnet_cidr }
           dns_nameservers: [8.8.4.4, 8.8.8.8]
       aws_properties:
         aws_config: { get_property: [ provider_configuration, aws_config ] }
@@ -204,7 +235,7 @@ node_templates:
         openstack_config: { get_property: [ provider_configuration, openstack_config] }
         subnet:
           ip_version: 4
-          cidr: 10.67.80.0/24
+          cidr: { get_input: inbound_subnet_cidr }
           dns_nameservers: [8.8.4.4, 8.8.8.8]
       aws_properties:
         aws_config: { get_property: [ provider_configuration, aws_config ] }
@@ -220,7 +251,7 @@ node_templates:
         openstack_config: { get_property: [ provider_configuration, openstack_config] }
         subnet:
           ip_version: 4
-          cidr: 10.67.81.0/24
+          cidr: { get_input: outbound_subnet_cidr }
           dns_nameservers: [8.8.4.4, 8.8.8.8]
       aws_properties:
         aws_config: { get_property: [ provider_configuration, aws_config ] }
@@ -238,6 +269,8 @@ node_templates:
         aws_config: { get_property: [ provider_configuration, aws_config ] }
     relationships:
       - target: external_network
+        type: cloudify.relationships.connected_to
+      - target: management_network
         type: cloudify.relationships.connected_to
 
   management_port:
@@ -288,7 +321,6 @@ node_templates:
       - type: aria.relationships.port_connected_to_security_group
         target: vm_security_groups
 
-
   vm_security_groups:
     type: aria.multicloud.security_group
     properties:
@@ -297,6 +329,9 @@ node_templates:
         security_group:
           description: Security group
         rules:
+          - port: 22
+            remote_ip_prefix: 0.0.0.0/0
+            protocol: tcp
           - port_range_min: 1
             port_range_max: 65535
             remote_ip_prefix: 0.0.0.0/0
@@ -326,7 +361,7 @@ node_templates:
             to_port: 255
             cidr_ip: 0.0.0.0/0
 
-  bind9_host:
+  vyatta_host:
     type: aria.multicloud.Compute
     properties:
       resource_id: vyatta-infa
@@ -347,20 +382,33 @@ node_templates:
     relationships:
       - type: aria.relationships.instance_connected_to_keypair
         target: keypair
-      - type: aria.relationships.instance_connected_to_floating_ip
-        target: vm_floating_ip
       - type: aria.relationships.instance_connected_to_port
         target: management_port
+      - type: aria.relationships.instance_connected_to_floating_ip
+        target: vm_floating_ip
+      - type: aria.relationships.instance_connected_to_security_group
+        target: vm_security_groups
       - type: aria.relationships.instance_connected_to_port
         target: inbound_port
       - type: aria.relationships.instance_connected_to_port
         target: outbound_port
-      - type: aria.relationships.instance_connected_to_security_group
-        target: vm_security_groups
+
+  activate_vyatta_interfaces:
+    type: aria.networking.initialize_interfaces
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: vyatta_host
+      - type: cloudify.relationships.contained_in
+        target: vyatta_host
+      - type: cloudify.relationships.connected_to
+        target: vyatta_host
 
 outputs:
   endpoint:
-    description: Network names
+    description: netconf required attributes for NAT
     value:
-      inbound: { get_property: [ inbound_network, resource_id ] }
-      outbound: { get_property: [ outbound_network, resource_id ] }
+      vyatta_host: { get_attribute: [vm_floating_ip, floating_ip_address] }
+      inbound_subnet_cidr: { get_input: inbound_subnet_cidr }
+      outbound_subnet_cidr: { get_input: outbound_subnet_cidr }
+      inbound_network_name: { get_input: inbound_network_name }
+      outbound_network_name: { get_input: outbound_network_name }

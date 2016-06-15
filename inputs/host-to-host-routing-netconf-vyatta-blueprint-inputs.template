@@ -16,26 +16,24 @@ openstack_flavor_id: ''
 # Networking
 ####################################################
 
-existing_inbound_network_name: ''
-existing_outbound_network_name: ''
-inbound_port_name: ''
-outbound_port_name: ''
-existing_inbound_subnet_name: ''
-inbound_subnet_cidr: ''
-existing_outbound_subnet_name: ''
+management_network_name: ''
+management_subnet_name: ''
+management_subnet_cidr: ''
+management_port_name: ''
+
+outbound_network_name: ''
+outbound_subnet_name: ''
 outbound_subnet_cidr: ''
+outbound_port_name: ''
 
-####################################################
-# NetConf Vyatta
-####################################################
+inbound_network_name: ''
+inbound_subnet_name: ''
+inbound_subnet_cidr: ''
+inbound_port_name: ''
 
-netconf_server: ''
-netconf_user: ''
-netconf_password: ''
-netconf_key_content: ''
-netconf_nat_outbound_interface: ''
-unique_inbound_nat_rule_id: ''
-unique_outbound_nat_rule_id: ''
+router_name: ''
+
+external_network_name:''
 
 ####################################################
 # AWS
