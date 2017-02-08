@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-sex -e
+set -e
 
 export NUMBER_OF_INTERFACES=`lspci | grep -i eth | wc -l`
 
